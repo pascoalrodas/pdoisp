@@ -25,7 +25,6 @@
       border-radius: 12px;
     }
 
-    /* ÁREA DE SALA */
     .room-box {
       background: #1a1a2e;
       padding: 20px;
@@ -63,7 +62,6 @@
       display: none;
     }
 
-    /* VÍDEOS */
     .video-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -93,9 +91,8 @@
       height: auto;
       display: block;
     }
-    #localVideo { transform: scaleX(-1); } /* Inverte imagem da câmera, como espelho */
+    #localVideo { transform: scaleX(-1); }
 
-    /* CONTROLES */
     .controls {
       display: flex;
       gap: 10px;
@@ -104,7 +101,6 @@
       margin: 15px 0;
     }
 
-    /* CHAT */
     .chat-area {
       background: #1a1a2e;
       border-radius: 12px;
@@ -151,6 +147,7 @@
     }
     .conectado { background: #2ecc71; }
     .desconectado { background: #e74c3c; }
+    .conectando { background: #f39c12; }
   </style>
 </head>
 <body>
@@ -160,7 +157,6 @@
       <p>Áudio • Vídeo • Texto | Sem servidores intermediários</p>
     </div>
 
-    <!-- 📍 SISTEMA DE SALA -->
     <div class="room-box">
       <h2>Entrar ou Criar Sala</h2>
       <input type="text" id="roomCode" placeholder="Código da Sala ou Link">
@@ -170,9 +166,8 @@
       <div id="linkCompartilhar">Link para compartilhar: <span id="linkTexto"></span></div>
     </div>
 
-    <div id="statusConexao" class="status desconectado">Aguardando conexão...</div>
+    <div id="statusConexao" class="status desconectado">Aguardando código...</div>
 
-    <!-- 📹 VÍDEOS -->
     <div class="video-grid">
       <div class="video-container">
         <p>Você</p>
@@ -184,14 +179,12 @@
       </div>
     </div>
 
-    <!-- 🎛️ CONTROLES -->
     <div class="controls">
       <button id="btnAudio" onclick="alternarAudio()" class="btn-primary">🎤 Áudio: ON</button>
       <button id="btnVideo" onclick="alternarVideo()" class="btn-primary">📹 Vídeo: ON</button>
       <button onclick="desligarChamada()" class="btn-danger">📴 Desligar</button>
     </div>
 
-    <!-- 💬 CHAT -->
     <div class="chat-area" id="mensagensChat"></div>
     <div class="chat-input-area">
       <input type="text" id="textoMensagem" placeholder="Digite sua mensagem..." onkeypress="if(event.key === 'Enter') enviarMensagem()">
@@ -200,21 +193,24 @@
 
   </div>
 
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <script>
-    // ==================================================
-    // 🧠 VARIÁVEIS E CONFIGURAÇÕES
-    // ==================================================
-    let localStream;       // Câmera/Microfone do usuário
-    let conexaoP2P;        // A conexão WebRTC em si
-    let canalDados;        // Canal para mensagens de texto
-    let codigoSala = "";   // Código único da sala
-    let souCriador = false;// Define quem iniciou a conexão
+    let localStream;
+    let conexaoP2P;
+    let canalDados;
+    let codigoSala = "";
+    let souCriador = false;
+    let socket;
 
-    // Servidores STUN: Ajudam os celulares a se encontrarem na internet
     const configuracao = {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
+        { urls: 'stun:stun1.l.google.com:19302' },
+        {
+          urls: 'turn:turn-server.pascoalrodas.com:3478',
+          username: 'usuario1',
+          credential: 'senha123'
+        }
       ]
     };
 
@@ -222,57 +218,40 @@
     const remoteVideo = document.getElementById('remoteVideo');
     const statusTexto = document.getElementById('statusConexao');
 
-    // ==================================================
-    // 🚀 INICIALIZAÇÃO DO SISTEMA
-    // ==================================================
     window.onload = () => {
-      // Verifica se veio código via link (ex: ?sala=abc123)
       const parametroUrl = new URLSearchParams(window.location.search);
       if(parametroUrl.get('sala')) {
         document.getElementById('roomCode').value = parametroUrl.get('sala');
         entrarSala();
       }
 
-      // REGISTRA O SERVICE WORKER (Essencial para notificações com navegador fechado)
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('service-worker.js')
-          .then(reg => console.log("✅ Service Worker pronto - Funciona em segundo plano"))
-          .catch(err => console.error("❌ Erro Service Worker:", err));
+        navigator.serviceWorker.register('service-worker.js');
       }
-
-      // Carrega histórico de mensagens salvo (se existir)
       carregarHistoricoLocal();
     };
 
-    // Pede permissão e liga câmera/microfone
     async function iniciarMidia() {
       try {
-        localStream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true
-        });
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         localVideo.srcObject = localStream;
       } catch (erro) {
-        alert("❌ Permita acesso à câmera e microfone para continuar!");
+        alert("❌ Permita acesso à câmera e microfone!");
       }
     }
 
-    // ==================================================
-    // 🏠 SISTEMA DE SALA
-    // ==================================================
     function criarSala() {
       codigoSala = "sala-" + Math.random().toString(36).substr(2, 10);
       document.getElementById('roomCode').value = codigoSala;
       souCriador = true;
 
-      // Gera link para compartilhar
       const linkCompleto = `${window.location.origin}${window.location.pathname}?sala=${codigoSala}`;
       document.getElementById('linkTexto').innerText = linkCompleto;
       document.getElementById('linkCompartilhar').style.display = "block";
 
       iniciarMidia();
-      registrarParaNotificacoes(codigoSala);
-      alert(`✅ Sala criada! Código: ${codigoSala}\nEnvie o código ou o link para seu amigo.`);
+      conectarSinalizador();
+      alert(`✅ Sala criada! Código: ${codigoSala}`);
     }
 
     function entrarSala() {
@@ -281,117 +260,111 @@
       
       souCriador = false;
       iniciarMidia();
-      registrarParaNotificacoes(codigoSala);
-
-      // INICIA CONEXÃO P2P
-      criarConexaoP2P();
-      statusTexto.innerText = "🔄 Conectando...";
-      statusTexto.className = "status desconectado";
+      conectarSinalizador();
     }
 
-    // ==================================================
-    // 🔗 NÚCLEO DA CONEXÃO WEBRTC (P2P)
-    // ==================================================
-    function criarConexaoP2P() {
-      // Cria a linha de conexão direta
-      conexaoP2P = new RTCPeerConnection(configuracao);
+    // 🔧 AQUI ESTÁ A PARTE QUE FALTOU: SERVIDOR DE SINALIZAÇÃO
+    function conectarSinalizador() {
+      statusTexto.innerText = "🔄 Conectando...";
+      statusTexto.className = "status conectando";
 
-      // 1. Envia minha câmera e áudio para a conexão
-      localStream.getTracks().forEach(faixa => {
-        conexaoP2P.addTrack(faixa, localStream);
+      // Usando um servidor público apenas para TROCAR DADOS DE CONEXÃO
+      socket = io('https://p2p-signaling-server-1.herokuapp.com/');
+
+      socket.on('connect', () => {
+        console.log("🔌 Conectado ao serviço de sinalização");
+        socket.emit('entrar-sala', codigoSala);
       });
 
-      // 2. Recebe a câmera e áudio do outro lado
+      // Quando encontrar outro usuário na sala
+      socket.on('usuario-encontrado', () => {
+        console.log("👤 Outro usuário encontrado! Iniciando P2P...");
+        criarConexaoP2P();
+      });
+
+      // Quando receber dados do outro celular
+      socket.on('dados-sinalizacao', async (dados) => {
+        if(!conexaoP2P) criarConexaoP2P();
+
+        if(dados.tipo === 'offer') {
+          await conexaoP2P.setRemoteDescription(new RTCSessionDescription(dados));
+          const resposta = await conexaoP2P.createAnswer();
+          await conexaoP2P.setLocalDescription(resposta);
+          enviarDados({ ...resposta, tipo: 'answer' });
+        } 
+        else if(dados.tipo === 'answer') {
+          await conexaoP2P.setRemoteDescription(new RTCSessionDescription(dados));
+        } 
+        else if(dados.candidate) {
+          try { await conexaoP2P.addIceCandidate(new RTCIceCandidate(dados)); } catch(e) {}
+        }
+      });
+    }
+
+    function enviarDados(dados) {
+      socket.emit('dados-sinalizacao', { sala: codigoSala, dados: dados });
+    }
+
+    // 🔗 Conexão P2P
+    function criarConexaoP2P() {
+      conexaoP2P = new RTCPeerConnection(configuracao);
+
+      localStream.getTracks().forEach(faixa => conexaoP2P.addTrack(faixa, localStream));
+
       conexaoP2P.ontrack = (evento) => {
         remoteVideo.srcObject = evento.streams[0];
         statusTexto.innerText = "✅ CONECTADO! - Áudio e Vídeo Direto";
         statusTexto.className = "status conectado";
       };
 
-      // 3. Coleta endereços de rede para se encontrar
       conexaoP2P.onicecandidate = (evento) => {
-        if (evento.candidate) {
-          // ⚠️ AQUI ERA O SERVIDOR DE SINALIZAÇÃO
-          // Em produção, esse dado iria para um servidor pequeno só para "apresentar"
-          // Como exemplo lógico, trocamos automaticamente. Em uso real, usaria Socket.io aqui.
-          trocarDadosSinalizacao(evento.candidate);
-        }
+        if (evento.candidate) enviarDados(evento.candidate);
       };
 
-      // 4. CANAL DE DADOS (Para mensagens de texto)
       if (souCriador) {
-        // Quem cria a sala abre o canal
         canalDados = conexaoP2P.createDataChannel("canalChat");
         configurarCanalTexto();
+        criarConvite();
       } else {
-        // Quem entra, recebe o canal
         conexaoP2P.ondatachannel = (evento) => {
           canalDados = evento.channel;
           configurarCanalTexto();
         };
       }
 
-      // Se for o criador, ele inicia o convite
-      if(souCriador) criarConviteConexao();
+      conexaoP2P.onconnectionstatechange = () => {
+        if(conexaoP2P.connectionState === 'disconnected' || conexaoP2P.connectionState === 'failed') {
+          statusTexto.innerText = "❌ Conexão perdida";
+          statusTexto.className = "status desconectado";
+        }
+      };
     }
 
-    // Lógica de troca de convite (Sinalização)
-    async function criarConviteConexao() {
+    async function criarConvite() {
       const convite = await conexaoP2P.createOffer();
       await conexaoP2P.setLocalDescription(convite);
-      trocarDadosSinalizacao(convite);
-    }
-    async function receberConvite(resposta) {
-      await conexaoP2P.setRemoteDescription(new RTCSessionDescription(resposta));
-      if(resposta.type === 'offer') {
-        const respostaConvite = await conexaoP2P.createAnswer();
-        await conexaoP2P.setLocalDescription(respostaConvite);
-        trocarDadosSinalizacao(respostaConvite);
-      }
+      enviarDados({ ...convite, tipo: 'offer' });
     }
 
-    // Essa função simula a troca automática. Em produção usaria servidor leve aqui.
-    function trocarDadosSinalizacao(dados) {
-      console.log("📡 Dados de conexão trocados (apenas para se encontrar):", dados);
-      // IMPORTANTE: Após essa troca inicial, NENHUM dado mais passa por fora. Tudo é direto!
-    }
-
-    // ==================================================
-    // 💬 SISTEMA DE MENSAGENS E ARMAZENAMENTO LOCAL
-    // ==================================================
+    // 💬 Chat
     function configurarCanalTexto() {
-      canalDados.onopen = () => {
-        console.log("📨 Canal de dados ABERTO - Tudo direto P2P");
-      };
-
-      // QUANDO RECEBE UMA MENSAGEM
+      canalDados.onopen = () => console.log("📨 Canal aberto!");
+      
       canalDados.onmessage = (evento) => {
         const mensagem = evento.data;
-        
-        // 🟩 ARMAZENA SOMENTE NO NAVEGADOR DE QUEM RECEBE
         let historico = JSON.parse(localStorage.getItem(`chat_${codigoSala}`) || '[]');
-        historico.push({ tipo: 'recebido', texto: mensagem, hora: new Date().toLocaleTimeString() });
+        historico.push({ tipo: 'recebido', texto: mensagem });
         localStorage.setItem(`chat_${codigoSala}`, JSON.stringify(historico));
-
-        // Mostra na tela
         adicionarMensagemTela('them', mensagem);
-      };
-
-      canalDados.onclose = () => {
-        statusTexto.innerText = "🔌 Desconectado";
-        statusTexto.className = "status desconectado";
       };
     }
 
     function enviarMensagem() {
-      if(!canalDados || canalDados.readyState !== "open") {
-        return alert("❌ Ainda não conectado ao parceiro!");
-      }
+      if(!canalDados || canalDados.readyState !== "open") return alert("❌ Ainda não conectado!");
       const input = document.getElementById('textoMensagem');
       const texto = input.value.trim();
       if(!texto) return;
 
-      // Envia direto para o outro navegador
       canalDados.send(texto);
       adicionarMensagemTela('me', texto);
       input.value = "";
@@ -403,35 +376,15 @@
       div.className = `message ${tipo}`;
       div.innerHTML = `<strong>${tipo === 'me' ? 'Você' : 'Parceiro'}:</strong> ${texto}`;
       caixa.appendChild(div);
-      caixa.scrollTop = caixa.scrollHeight; // Rola para baixo automaticamente
+      caixa.scrollTop = caixa.scrollHeight;
     }
 
     function carregarHistoricoLocal() {
-      const caixa = document.getElementById('mensagensChat');
       const dados = JSON.parse(localStorage.getItem(`chat_${codigoSala}`) || '[]');
-      dados.forEach(item => {
-        adicionarMensagemTela(item.tipo, item.texto);
-      });
+      dados.forEach(item => adicionarMensagemTela(item.tipo, item.texto));
     }
 
-    // ==================================================
-    // 🔔 SISTEMA DE CHAMADA / NOTIFICAÇÃO (Mesmo fechado)
-    // ==================================================
-    async function registrarParaNotificacoes(sala) {
-      if (!('Notification' in window)) return;
-
-      // Pede permissão para o Android/iOS notificar
-      const permissao = await Notification.requestPermission();
-      if (permissao === 'granted') {
-        // Guarda o código da sala para o Service Worker saber onde entrar
-        localStorage.setItem('salaAtual', sala);
-        console.log("🔔 Permissão para chamadas liberada");
-      }
-    }
-
-    // ==================================================
-    // 🎛️ CONTROLES DE ÁUDIO E VÍDEO
-    // ==================================================
+    // 🎛️ Controles
     function alternarAudio() {
       const faixaAudio = localStream.getAudioTracks()[0];
       faixaAudio.enabled = !faixaAudio.enabled;
@@ -451,13 +404,14 @@
     function desligarChamada() {
       if(conexaoP2P) conexaoP2P.close();
       if(localStream) localStream.getTracks().forEach(faixa => faixa.stop());
+      if(socket) socket.disconnect();
+      
       conexaoP2P = null;
       canalDados = null;
       remoteVideo.srcObject = null;
       statusTexto.innerText = "📴 Chamada encerrada";
       statusTexto.className = "status desconectado";
     }
-
   </script>
 </body>
 </html>
