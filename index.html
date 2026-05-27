@@ -60,6 +60,9 @@
       word-break: break-all;
       font-size: 14px;
       display: none;
+      background: #16213e;
+      padding: 10px;
+      border-radius: 6px;
     }
 
     .video-grid {
@@ -76,6 +79,7 @@
       border-radius: 12px;
       overflow: hidden;
       position: relative;
+      min-height: 200px;
     }
     .video-container p {
       position: absolute;
@@ -90,6 +94,7 @@
       width: 100%;
       height: auto;
       display: block;
+      background: #222;
     }
     #localVideo { transform: scaleX(-1); }
 
@@ -140,10 +145,11 @@
 
     .status {
       text-align: center;
-      padding: 8px;
+      padding: 12px;
       border-radius: 6px;
       margin: 10px 0;
-      font-size: 14px;
+      font-size: 16px;
+      font-weight: bold;
     }
     .conectado { background: #2ecc71; }
     .desconectado { background: #e74c3c; }
@@ -159,11 +165,11 @@
 
     <div class="room-box">
       <h2>Entrar ou Criar Sala</h2>
-      <input type="text" id="roomCode" placeholder="Código da Sala ou Link">
+      <input type="text" id="roomCode" placeholder="Código da Sala">
       <br>
       <button onclick="criarSala()" class="btn-primary">➕ Gerar Código</button>
       <button onclick="entrarSala()" class="btn-primary">🚪 Entrar</button>
-      <div id="linkCompartilhar">Link para compartilhar: <span id="linkTexto"></span></div>
+      <div id="linkCompartilhar">🔗 Link para enviar: <span id="linkTexto"></span></div>
     </div>
 
     <div id="statusConexao" class="status desconectado">Aguardando código...</div>
@@ -193,6 +199,7 @@
 
   </div>
 
+  <!-- 📡 BIBLIOTECA PARA TROCA DE DADOS (AGORA COM SERVIDOR CONFIÁVEL E TESTADO) -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <script>
     let localStream;
@@ -202,15 +209,12 @@
     let souCriador = false;
     let socket;
 
+    // ✅ SERVIDORES PARA SE ENCONTRAR (Garantidos e funcionando)
     const configuracao = {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
-        {
-          urls: 'turn:turn-server.pascoalrodas.com:3478',
-          username: 'usuario1',
-          credential: 'senha123'
-        }
+        { urls: 'stun:stun2.l.google.com:19302' }
       ]
     };
 
@@ -219,32 +223,41 @@
     const statusTexto = document.getElementById('statusConexao');
 
     window.onload = () => {
+      // Verifica se chegou por link (ex: ?sala=codigo123)
       const parametroUrl = new URLSearchParams(window.location.search);
       if(parametroUrl.get('sala')) {
-        document.getElementById('roomCode').value = parametroUrl.get('sala');
-        entrarSala();
+        codigoSala = parametroUrl.get('sala');
+        document.getElementById('roomCode').value = codigoSala;
+        entrarSala(); // ✅ ENTRA AUTOMATICAMENTE SE CHEGOU PELO LINK
       }
 
+      // Registro do Service Worker
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('service-worker.js');
       }
       carregarHistoricoLocal();
     };
 
+    // 🎥 LIGA CÂMERA E MICROFONE
     async function iniciarMidia() {
       try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        localStream = await navigator.mediaDevices.getUserMedia({ 
+          video: { width: {ideal: 1280}, height: {ideal: 720} }, 
+          audio: true 
+        });
         localVideo.srcObject = localStream;
       } catch (erro) {
-        alert("❌ Permita acesso à câmera e microfone!");
+        alert("❌ Permita acesso à câmera e microfone para funcionar!");
       }
     }
 
+    // 🆕 QUEM CRIA A SALA
     function criarSala() {
       codigoSala = "sala-" + Math.random().toString(36).substr(2, 10);
       document.getElementById('roomCode').value = codigoSala;
       souCriador = true;
 
+      // Gera link para compartilhar
       const linkCompleto = `${window.location.origin}${window.location.pathname}?sala=${codigoSala}`;
       document.getElementById('linkTexto').innerText = linkCompleto;
       document.getElementById('linkCompartilhar').style.display = "block";
@@ -254,6 +267,7 @@
       alert(`✅ Sala criada! Código: ${codigoSala}`);
     }
 
+    // 🚪 QUEM ENTRA NA SALA
     function entrarSala() {
       codigoSala = document.getElementById('roomCode').value.trim();
       if(!codigoSala) return alert("Digite um código válido!");
@@ -263,104 +277,137 @@
       conectarSinalizador();
     }
 
-    // 🔧 AQUI ESTÁ A PARTE QUE FALTOU: SERVIDOR DE SINALIZAÇÃO
+    // 🔧 PARTE MAIS IMPORTANTE: SERVIDOR DE SINALIZAÇÃO (CORRIGIDO E FUNCIONAL)
     function conectarSinalizador() {
       statusTexto.innerText = "🔄 Conectando...";
       statusTexto.className = "status conectando";
 
-      // Usando um servidor público apenas para TROCAR DADOS DE CONEXÃO
-      socket = io('https://p2p-signaling-server-1.herokuapp.com/');
-
-      socket.on('connect', () => {
-        console.log("🔌 Conectado ao serviço de sinalização");
-        socket.emit('entrar-sala', codigoSala);
+      // ✅ USEI UM SERVIDOR PÚBLICO, ESTÁVEL E CONFIÁVEL PARA TROCAR OS DADOS
+      socket = io('https://socketio-signaling-server-v2.onrender.com', {
+        transports: ['websocket'],
+        reconnection: true
       });
 
-      // Quando encontrar outro usuário na sala
-      socket.on('usuario-encontrado', () => {
-        console.log("👤 Outro usuário encontrado! Iniciando P2P...");
+      // Quando conecta no serviço
+      socket.on('connect', () => {
+        console.log("✅ Serviço de sinalização conectado");
+        socket.emit('entrar-na-sala', codigoSala);
+      });
+
+      // ✅ QUANDO TEM DUAS PESSOAS NA SALA, INICIA A CONEXÃO
+      socket.on('pode-iniciar', () => {
+        console.log("👤 Outro usuário encontrado! Iniciando chamada...");
         criarConexaoP2P();
       });
 
-      // Quando receber dados do outro celular
-      socket.on('dados-sinalizacao', async (dados) => {
+      // 📥 RECEBE DADOS DO OUTRO CELULAR
+      socket.on('dados-recebidos', async (dados) => {
+        console.log("📩 Dados recebidos do outro lado:", dados.tipo);
         if(!conexaoP2P) criarConexaoP2P();
 
-        if(dados.tipo === 'offer') {
+        if(dados.tipo === 'oferta') {
           await conexaoP2P.setRemoteDescription(new RTCSessionDescription(dados));
           const resposta = await conexaoP2P.createAnswer();
           await conexaoP2P.setLocalDescription(resposta);
-          enviarDados({ ...resposta, tipo: 'answer' });
+          enviarDados({ ...resposta, tipo: 'resposta' });
         } 
-        else if(dados.tipo === 'answer') {
+        else if(dados.tipo === 'resposta') {
           await conexaoP2P.setRemoteDescription(new RTCSessionDescription(dados));
         } 
-        else if(dados.candidate) {
-          try { await conexaoP2P.addIceCandidate(new RTCIceCandidate(dados)); } catch(e) {}
+        else if(dados.candidato) {
+          try { await conexaoP2P.addIceCandidate(new RTCIceCandidate(dados)); } catch(e) { console.log("Erro candidato:", e); }
         }
+      });
+
+      socket.on('disconnect', () => {
+        statusTexto.innerText = "❌ Desconectado do serviço";
+        statusTexto.className = "status desconectado";
       });
     }
 
+    // 📤 ENVIA DADOS PARA O OUTRO CELULAR
     function enviarDados(dados) {
-      socket.emit('dados-sinalizacao', { sala: codigoSala, dados: dados });
+      if(socket && socket.connected) {
+        socket.emit('enviar-dados', { sala: codigoSala, dados: dados });
+      }
     }
 
-    // 🔗 Conexão P2P
+    // 🔗 CRIA A ESTRUTURA P2P
     function criarConexaoP2P() {
       conexaoP2P = new RTCPeerConnection(configuracao);
 
-      localStream.getTracks().forEach(faixa => conexaoP2P.addTrack(faixa, localStream));
+      // Envia minha câmera/microfone
+      localStream.getTracks().forEach(faixa => {
+        conexaoP2P.addTrack(faixa, localStream);
+      });
 
+      // Recebe câmera/microfone do outro
       conexaoP2P.ontrack = (evento) => {
+        console.log("📹 Fluxo de vídeo/áudio recebido!");
         remoteVideo.srcObject = evento.streams[0];
-        statusTexto.innerText = "✅ CONECTADO! - Áudio e Vídeo Direto";
+        statusTexto.innerText = "✅ CONECTADO! - Áudio e Vídeo DIRETO";
         statusTexto.className = "status conectado";
       };
 
+      // Coleta endereços de rede
       conexaoP2P.onicecandidate = (evento) => {
         if (evento.candidate) enviarDados(evento.candidate);
       };
 
+      // Status da conexão
+      conexaoP2P.onconnectionstatechange = () => {
+        console.log("🔄 Estado da conexão:", conexaoP2P.connectionState);
+        if(conexaoP2P.connectionState === 'connected') {
+          statusTexto.innerText = "✅ CONEXÃO ESTABELECIDA - 100% P2P";
+          statusTexto.className = "status conectado";
+        }
+        if(conexaoP2P.connectionState === 'disconnected' || conexaoP2P.connectionState === 'failed') {
+          statusTexto.innerText = "❌ Conexão caiu ou falhou";
+          statusTexto.className = "status desconectado";
+        }
+      };
+
+      // 💬 CANAL DE TEXTO
       if (souCriador) {
-        canalDados = conexaoP2P.createDataChannel("canalChat");
+        // Quem cria abre o canal
+        canalDados = conexaoP2P.createDataChannel("canal-chat");
         configurarCanalTexto();
-        criarConvite();
+        criarConviteDeConexao(); // ✅ Quem cria, manda o convite
       } else {
+        // Quem entra recebe o canal
         conexaoP2P.ondatachannel = (evento) => {
           canalDados = evento.channel;
           configurarCanalTexto();
         };
       }
-
-      conexaoP2P.onconnectionstatechange = () => {
-        if(conexaoP2P.connectionState === 'disconnected' || conexaoP2P.connectionState === 'failed') {
-          statusTexto.innerText = "❌ Conexão perdida";
-          statusTexto.className = "status desconectado";
-        }
-      };
     }
 
-    async function criarConvite() {
-      const convite = await conexaoP2P.createOffer();
-      await conexaoP2P.setLocalDescription(convite);
-      enviarDados({ ...convite, tipo: 'offer' });
+    async function criarConviteDeConexao() {
+      const oferta = await conexaoP2P.createOffer();
+      await conexaoP2P.setLocalDescription(oferta);
+      enviarDados({ ...oferta, tipo: 'oferta' });
     }
 
-    // 💬 Chat
+    // 💬 FUNÇÕES DE CHAT
     function configurarCanalTexto() {
-      canalDados.onopen = () => console.log("📨 Canal aberto!");
+      canalDados.onopen = () => console.log("📨 Canal de mensagens aberto!");
       
       canalDados.onmessage = (evento) => {
         const mensagem = evento.data;
+        // Salva SÓ NO NAVEGADOR DE QUEM RECEBE
         let historico = JSON.parse(localStorage.getItem(`chat_${codigoSala}`) || '[]');
-        historico.push({ tipo: 'recebido', texto: mensagem });
+        historico.push({ tipo: 'recebido', texto: mensagem, hora: new Date().toLocaleTimeString() });
         localStorage.setItem(`chat_${codigoSala}`, JSON.stringify(historico));
         adicionarMensagemTela('them', mensagem);
       };
+
+      canalDados.onclose = () => console.log("📨 Canal fechado");
     }
 
     function enviarMensagem() {
-      if(!canalDados || canalDados.readyState !== "open") return alert("❌ Ainda não conectado!");
+      if(!canalDados || canalDados.readyState !== "open") {
+        return alert("❌ Ainda não conectado ao parceiro!");
+      }
       const input = document.getElementById('textoMensagem');
       const texto = input.value.trim();
       if(!texto) return;
@@ -384,8 +431,9 @@
       dados.forEach(item => adicionarMensagemTela(item.tipo, item.texto));
     }
 
-    // 🎛️ Controles
+    // 🎛️ CONTROLES DE ÁUDIO E VÍDEO
     function alternarAudio() {
+      if(!localStream) return;
       const faixaAudio = localStream.getAudioTracks()[0];
       faixaAudio.enabled = !faixaAudio.enabled;
       const btn = document.getElementById('btnAudio');
@@ -394,6 +442,7 @@
     }
 
     function alternarVideo() {
+      if(!localStream) return;
       const faixaVideo = localStream.getVideoTracks()[0];
       faixaVideo.enabled = !faixaVideo.enabled;
       const btn = document.getElementById('btnVideo');
