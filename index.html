@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Conexão P2P - Chamada Direta</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: Arial, sans-serif; 
+      background: #0f0f1a; 
+      color: white; 
+      min-height: 100vh;
+    }
+    .container { 
+      max-width: 1200px; 
+      margin: 0 auto; 
+      padding: 20px; 
+    }
+    .header { 
+      text-align: center; 
+      margin-bottom: 25px; 
+      padding: 15px;
+      background: #16213e;
+      border-radius: 12px;
+    }
+
+    /* ÁREA DE SALA */
+    .room-box {
+      background: #1a1a2e;
+      padding: 20px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    .room-box input {
+      padding: 12px 15px;
+      border-radius: 8px;
+      border: none;
+      width: 280px;
+      font-size: 16px;
+      margin-right: 10px;
+      margin-bottom: 10px;
+    }
+    button {
+      padding: 12px 20px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 15px;
+      transition: 0.2s;
+    }
+    .btn-primary { background: #00bfff; color: white; }
+    .btn-primary:hover { background: #0099cc; }
+    .btn-danger { background: #ff4444; color: white; }
+    .btn-danger:hover { background: #cc0000; }
+    #linkCompartilhar {
+      margin-top: 12px;
+      color: #00bfff;
+      word-break: break-all;
+      font-size: 14px;
+      display: none;
+    }
+
+    /* VÍDEOS */
+    .video-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+      margin: 20px 0;
+    }
+    @media (max-width: 768px) {
+      .video-grid { grid-template-columns: 1fr; }
+    }
+    .video-container {
+      background: #000;
+      border-radius: 12px;
+      overflow: hidden;
+      position: relative;
+    }
+    .video-container p {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.6);
+      padding: 5px 10px;
+      border-radius: 6px;
+      z-index: 2;
+    }
+    video {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+    #localVideo { transform: scaleX(-1); } /* Inverte imagem da câmera, como espelho */
+
+    /* CONTROLES */
+    .controls {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin: 15px 0;
+    }
+
+    /* CHAT */
+    .chat-area {
+      background: #1a1a2e;
+      border-radius: 12px;
+      height: 320px;
+      overflow-y: auto;
+      padding: 15px;
+      margin: 15px 0;
+    }
+    .message {
+      margin: 8px 0;
+      padding: 10px 14px;
+      border-radius: 8px;
+      max-width: 80%;
+      line-height: 1.4;
+    }
+    .me {
+      background: #00bfff;
+      margin-left: auto;
+      text-align: right;
+    }
+    .them {
+      background: #33334d;
+      margin-right: auto;
+    }
+    .chat-input-area {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .chat-input-area input {
+      flex: 1;
+      padding: 12px 15px;
+      border-radius: 8px;
+      border: none;
+      font-size: 16px;
+    }
+
+    .status {
+      text-align: center;
+      padding: 8px;
+      border-radius: 6px;
+      margin: 10px 0;
+      font-size: 14px;
+    }
+    .conectado { background: #2ecc71; }
+    .desconectado { background: #e74c3c; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🔗 Conexão P2P Direta</h1>
+      <p>Áudio • Vídeo • Texto | Sem servidores intermediários</p>
+    </div>
+
+    <!-- 📍 SISTEMA DE SALA -->
+    <div class="room-box">
+      <h2>Entrar ou Criar Sala</h2>
+      <input type="text" id="roomCode" placeholder="Código da Sala ou Link">
+      <br>
+      <button onclick="criarSala()" class="btn-primary">➕ Gerar Código</button>
+      <button onclick="entrarSala()" class="btn-primary">🚪 Entrar</button>
+      <div id="linkCompartilhar">Link para compartilhar: <span id="linkTexto"></span></div>
+    </div>
+
+    <div id="statusConexao" class="status desconectado">Aguardando conexão...</div>
+
+    <!-- 📹 VÍDEOS -->
+    <div class="video-grid">
+      <div class="video-container">
+        <p>Você</p>
+        <video id="localVideo" autoplay playsinline muted></video>
+      </div>
+      <div class="video-container">
+        <p>Parceiro</p>
+        <video id="remoteVideo" autoplay playsinline></video>
+      </div>
+    </div>
+
+    <!-- 🎛️ CONTROLES -->
+    <div class="controls">
+      <button id="btnAudio" onclick="alternarAudio()" class="btn-primary">🎤 Áudio: ON</button>
+      <button id="btnVideo" onclick="alternarVideo()" class="btn-primary">📹 Vídeo: ON</button>
+      <button onclick="desligarChamada()" class="btn-danger">📴 Desligar</button>
+    </div>
+
+    <!-- 💬 CHAT -->
+    <div class="chat-area" id="mensagensChat"></div>
+    <div class="chat-input-area">
+      <input type="text" id="textoMensagem" placeholder="Digite sua mensagem..." onkeypress="if(event.key === 'Enter') enviarMensagem()">
+      <button onclick="enviarMensagem()" class="btn-primary">Enviar</button>
+    </div>
+
+  </div>
+
+  <script>
+    // ==================================================
+    // 🧠 VARIÁVEIS E CONFIGURAÇÕES
+    // ==================================================
+    let localStream;       // Câmera/Microfone do usuário
+    let conexaoP2P;        // A conexão WebRTC em si
+    let canalDados;        // Canal para mensagens de texto
+    let codigoSala = "";   // Código único da sala
+    let souCriador = false;// Define quem iniciou a conexão
+
+    // Servidores STUN: Ajudam os celulares a se encontrarem na internet
+    const configuracao = {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ]
+    };
+
+    const localVideo = document.getElementById('localVideo');
+    const remoteVideo = document.getElementById('remoteVideo');
+    const statusTexto = document.getElementById('statusConexao');
+
+    // ==================================================
+    // 🚀 INICIALIZAÇÃO DO SISTEMA
+    // ==================================================
+    window.onload = () => {
+      // Verifica se veio código via link (ex: ?sala=abc123)
+      const parametroUrl = new URLSearchParams(window.location.search);
+      if(parametroUrl.get('sala')) {
+        document.getElementById('roomCode').value = parametroUrl.get('sala');
+        entrarSala();
+      }
+
+      // REGISTRA O SERVICE WORKER (Essencial para notificações com navegador fechado)
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('service-worker.js')
+          .then(reg => console.log("✅ Service Worker pronto - Funciona em segundo plano"))
+          .catch(err => console.error("❌ Erro Service Worker:", err));
+      }
+
+      // Carrega histórico de mensagens salvo (se existir)
+      carregarHistoricoLocal();
+    };
+
+    // Pede permissão e liga câmera/microfone
+    async function iniciarMidia() {
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true
+        });
+        localVideo.srcObject = localStream;
+      } catch (erro) {
+        alert("❌ Permita acesso à câmera e microfone para continuar!");
+      }
+    }
+
+    // ==================================================
+    // 🏠 SISTEMA DE SALA
+    // ==================================================
+    function criarSala() {
+      codigoSala = "sala-" + Math.random().toString(36).substr(2, 10);
+      document.getElementById('roomCode').value = codigoSala;
+      souCriador = true;
+
+      // Gera link para compartilhar
+      const linkCompleto = `${window.location.origin}${window.location.pathname}?sala=${codigoSala}`;
+      document.getElementById('linkTexto').innerText = linkCompleto;
+      document.getElementById('linkCompartilhar').style.display = "block";
+
+      iniciarMidia();
+      registrarParaNotificacoes(codigoSala);
+      alert(`✅ Sala criada! Código: ${codigoSala}\nEnvie o código ou o link para seu amigo.`);
+    }
+
+    function entrarSala() {
+      codigoSala = document.getElementById('roomCode').value.trim();
+      if(!codigoSala) return alert("Digite um código válido!");
+      
+      souCriador = false;
+      iniciarMidia();
+      registrarParaNotificacoes(codigoSala);
+
+      // INICIA CONEXÃO P2P
+      criarConexaoP2P();
+      statusTexto.innerText = "🔄 Conectando...";
+      statusTexto.className = "status desconectado";
+    }
+
+    // ==================================================
+    // 🔗 NÚCLEO DA CONEXÃO WEBRTC (P2P)
+    // ==================================================
+    function criarConexaoP2P() {
+      // Cria a linha de conexão direta
+      conexaoP2P = new RTCPeerConnection(configuracao);
+
+      // 1. Envia minha câmera e áudio para a conexão
+      localStream.getTracks().forEach(faixa => {
+        conexaoP2P.addTrack(faixa, localStream);
+      });
+
+      // 2. Recebe a câmera e áudio do outro lado
+      conexaoP2P.ontrack = (evento) => {
+        remoteVideo.srcObject = evento.streams[0];
+        statusTexto.innerText = "✅ CONECTADO! - Áudio e Vídeo Direto";
+        statusTexto.className = "status conectado";
+      };
+
+      // 3. Coleta endereços de rede para se encontrar
+      conexaoP2P.onicecandidate = (evento) => {
+        if (evento.candidate) {
+          // ⚠️ AQUI ERA O SERVIDOR DE SINALIZAÇÃO
+          // Em produção, esse dado iria para um servidor pequeno só para "apresentar"
+          // Como exemplo lógico, trocamos automaticamente. Em uso real, usaria Socket.io aqui.
+          trocarDadosSinalizacao(evento.candidate);
+        }
+      };
+
+      // 4. CANAL DE DADOS (Para mensagens de texto)
+      if (souCriador) {
+        // Quem cria a sala abre o canal
+        canalDados = conexaoP2P.createDataChannel("canalChat");
+        configurarCanalTexto();
+      } else {
+        // Quem entra, recebe o canal
+        conexaoP2P.ondatachannel = (evento) => {
+          canalDados = evento.channel;
+          configurarCanalTexto();
+        };
+      }
+
+      // Se for o criador, ele inicia o convite
+      if(souCriador) criarConviteConexao();
+    }
+
+    // Lógica de troca de convite (Sinalização)
+    async function criarConviteConexao() {
+      const convite = await conexaoP2P.createOffer();
+      await conexaoP2P.setLocalDescription(convite);
+      trocarDadosSinalizacao(convite);
+    }
+    async function receberConvite(resposta) {
+      await conexaoP2P.setRemoteDescription(new RTCSessionDescription(resposta));
+      if(resposta.type === 'offer') {
+        const respostaConvite = await conexaoP2P.createAnswer();
+        await conexaoP2P.setLocalDescription(respostaConvite);
+        trocarDadosSinalizacao(respostaConvite);
+      }
+    }
+
+    // Essa função simula a troca automática. Em produção usaria servidor leve aqui.
+    function trocarDadosSinalizacao(dados) {
+      console.log("📡 Dados de conexão trocados (apenas para se encontrar):", dados);
+      // IMPORTANTE: Após essa troca inicial, NENHUM dado mais passa por fora. Tudo é direto!
+    }
+
+    // ==================================================
+    // 💬 SISTEMA DE MENSAGENS E ARMAZENAMENTO LOCAL
+    // ==================================================
+    function configurarCanalTexto() {
+      canalDados.onopen = () => {
+        console.log("📨 Canal de dados ABERTO - Tudo direto P2P");
+      };
+
+      // QUANDO RECEBE UMA MENSAGEM
+      canalDados.onmessage = (evento) => {
+        const mensagem = evento.data;
+        
+        // 🟩 ARMAZENA SOMENTE NO NAVEGADOR DE QUEM RECEBE
+        let historico = JSON.parse(localStorage.getItem(`chat_${codigoSala}`) || '[]');
+        historico.push({ tipo: 'recebido', texto: mensagem, hora: new Date().toLocaleTimeString() });
+        localStorage.setItem(`chat_${codigoSala}`, JSON.stringify(historico));
+
+        // Mostra na tela
+        adicionarMensagemTela('them', mensagem);
+      };
+
+      canalDados.onclose = () => {
+        statusTexto.innerText = "🔌 Desconectado";
+        statusTexto.className = "status desconectado";
+      };
+    }
+
+    function enviarMensagem() {
+      if(!canalDados || canalDados.readyState !== "open") {
+        return alert("❌ Ainda não conectado ao parceiro!");
+      }
+      const input = document.getElementById('textoMensagem');
+      const texto = input.value.trim();
+      if(!texto) return;
+
+      // Envia direto para o outro navegador
+      canalDados.send(texto);
+      adicionarMensagemTela('me', texto);
+      input.value = "";
+    }
+
+    function adicionarMensagemTela(tipo, texto) {
+      const caixa = document.getElementById('mensagensChat');
+      const div = document.createElement('div');
+      div.className = `message ${tipo}`;
+      div.innerHTML = `<strong>${tipo === 'me' ? 'Você' : 'Parceiro'}:</strong> ${texto}`;
+      caixa.appendChild(div);
+      caixa.scrollTop = caixa.scrollHeight; // Rola para baixo automaticamente
+    }
+
+    function carregarHistoricoLocal() {
+      const caixa = document.getElementById('mensagensChat');
+      const dados = JSON.parse(localStorage.getItem(`chat_${codigoSala}`) || '[]');
+      dados.forEach(item => {
+        adicionarMensagemTela(item.tipo, item.texto);
+      });
+    }
+
+    // ==================================================
+    // 🔔 SISTEMA DE CHAMADA / NOTIFICAÇÃO (Mesmo fechado)
+    // ==================================================
+    async function registrarParaNotificacoes(sala) {
+      if (!('Notification' in window)) return;
+
+      // Pede permissão para o Android/iOS notificar
+      const permissao = await Notification.requestPermission();
+      if (permissao === 'granted') {
+        // Guarda o código da sala para o Service Worker saber onde entrar
+        localStorage.setItem('salaAtual', sala);
+        console.log("🔔 Permissão para chamadas liberada");
+      }
+    }
+
+    // ==================================================
+    // 🎛️ CONTROLES DE ÁUDIO E VÍDEO
+    // ==================================================
+    function alternarAudio() {
+      const faixaAudio = localStream.getAudioTracks()[0];
+      faixaAudio.enabled = !faixaAudio.enabled;
+      const btn = document.getElementById('btnAudio');
+      btn.innerText = faixaAudio.enabled ? "🎤 Áudio: ON" : "🎤 Áudio: OFF";
+      btn.style.background = faixaAudio.enabled ? "#00bfff" : "#ff8800";
+    }
+
+    function alternarVideo() {
+      const faixaVideo = localStream.getVideoTracks()[0];
+      faixaVideo.enabled = !faixaVideo.enabled;
+      const btn = document.getElementById('btnVideo');
+      btn.innerText = faixaVideo.enabled ? "📹 Vídeo: ON" : "📹 Vídeo: OFF";
+      btn.style.background = faixaVideo.enabled ? "#00bfff" : "#ff8800";
+    }
+
+    function desligarChamada() {
+      if(conexaoP2P) conexaoP2P.close();
+      if(localStream) localStream.getTracks().forEach(faixa => faixa.stop());
+      conexaoP2P = null;
+      canalDados = null;
+      remoteVideo.srcObject = null;
+      statusTexto.innerText = "📴 Chamada encerrada";
+      statusTexto.className = "status desconectado";
+    }
+
+  </script>
+</body>
+</html>
