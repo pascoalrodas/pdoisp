@@ -217,10 +217,10 @@
 
   <script>
     // ==============================================
-    // ⚠️ COLOQUE A CHAVE CORRETA AQUI EMBAIXO ⚠️
+    // ✅ SEUS DADOS CERTOS AQUI
     // ==============================================
-    const SUPABASE_URL = "https://xxmsrrekhtuvtpulkfwu.supabase.co"; // ✔️ Essa já está certa
-    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh4bXNycmVraHR1dnRwdWxrZnd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5MTc2NTQsImV4cCI6MjA5NTQ5MzY1NH0.H7-Kn0FZ_W2gOrqsuClXV1-BkQywj8rXBavSg9I7R4Q"; // <-- 🔴 COLOQUE A CHAVE CERTA AQUI!
+    const SUPABASE_URL = "https://xxmsrrekhtuvtpulkfwu.supabase.co";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh4bXNycmVraHR1dnRwdWxrZnd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5MTc2NTQsImV4cCI6MjA5NTQ5MzY1NH0.H7-Kn0FZ_W2gOrqsuClXV1-BkQywj8rXBavSg9I7R4Q";
     // ==============================================
 
     let localStream;
@@ -252,9 +252,13 @@
     window.onload = () => {
       adicionarLog("Sistema iniciado");
       
-      // 🟩 CONECTA NO SEU SUPABASE
-      supabase = supabaseJs.createClient(SUPABASE_URL, SUPABASE_KEY);
-      adicionarLog("✅ Conectado ao Supabase");
+      // ✅ CORREÇÃO AQUI: nome da biblioteca correto
+      if (typeof supabaseJs !== 'undefined') {
+        supabase = supabaseJs.createClient(SUPABASE_URL, SUPABASE_KEY);
+        adicionarLog("✅ Conectado ao Supabase");
+      } else {
+        adicionarLog("❌ Biblioteca não carregou, recarregue a página");
+      }
 
       const parametroUrl = new URLSearchParams(window.location.search);
       if(parametroUrl.get('sala')) {
@@ -281,16 +285,22 @@
       }
     }
 
+    // ✅ FUNÇÃO DE CRIAR SALA GARANTIDA
     function criarSala() {
-      codigoSala = "sala-" + Math.random().toString(36).substr(2, 10);
-      document.getElementById('roomCode').value = codigoSala;
-      souCriador = true;
-      const linkCompleto = `${window.location.origin}${window.location.pathname}?sala=${codigoSala}`;
-      document.getElementById('linkTexto').innerText = linkCompleto;
-      document.getElementById('linkCompartilhar').style.display = "block";
-      iniciarMidia();
-      iniciarCanalTempoReal();
-      alert(`✅ Sala criada: ${codigoSala}`);
+      try {
+        codigoSala = "sala-" + Math.random().toString(36).substr(2, 10);
+        document.getElementById('roomCode').value = codigoSala;
+        souCriador = true;
+        const linkCompleto = `${window.location.origin}${window.location.pathname}?sala=${codigoSala}`;
+        document.getElementById('linkTexto').innerText = linkCompleto;
+        document.getElementById('linkCompartilhar').style.display = "block";
+        iniciarMidia();
+        iniciarCanalTempoReal();
+        adicionarLog("✅ Sala criada: " + codigoSala);
+        alert(`✅ Sala criada! Código: ${codigoSala}`);
+      } catch (erro) {
+        adicionarLog("❌ Erro ao criar sala: " + erro.message);
+      }
     }
 
     function entrarSala() {
@@ -301,12 +311,11 @@
       iniciarCanalTempoReal();
     }
 
-    // 🔴 AQUI É A MÁGICA: TROCA DE DADOS PELO SUPABASE
+    // 🔴 CANAL DE TEMPO REAL
     function iniciarCanalTempoReal() {
       statusTexto.innerText = "🔄 Conectando...";
       statusTexto.className = "status conectando";
 
-      // Escuta mensagens da sala
       canalTempoReal = supabase.channel(`sala:${codigoSala}`)
         .on('broadcast', { event: 'dados' }, async (payload) => {
           const dados = payload.payload;
@@ -315,7 +324,6 @@
           if(!conexaoP2P) criarConexaoP2P();
 
           if(dados.tipo === 'pronto') {
-            // Se eu sou o criador e o outro ficou pronto, eu envio o convite
             if (souCriador) criarConvite();
           }
           else if(dados.tipo === 'oferta') {
@@ -334,7 +342,6 @@
         .subscribe((status) => {
           if (status === 'SUBSCRIBED') {
             adicionarLog("✅ Escutando a sala");
-            // Avisa que estou pronto
             enviarDados({ tipo: 'pronto' });
           } else {
             adicionarLog("❌ Erro ao se inscrever: " + status);
