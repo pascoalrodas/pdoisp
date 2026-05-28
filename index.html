@@ -173,7 +173,7 @@
 <body>
   <div class="container">
     <div class="header">
-      <h1>🔗 Conexão P2P - Grok 2</h1>
+      <h1>🔗 Conexão P2P - Supabase</h1>
       <p>Áudio • Vídeo • Texto | Servidor Próprio e Estável</p>
     </div>
 
@@ -223,7 +223,7 @@
     let canalDados;
     let codigoSala = "";
     let souCriador = false;
-    let supabase;
+    let supabaseClient;
     let canalTempoReal;
 
     const configuracao = {
@@ -247,7 +247,7 @@
     window.onload = () => {
       adicionarLog("Sistema iniciado");
       
-      supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+      supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
       adicionarLog("✅ Conectado ao Supabase");
 
       const parametroUrl = new URLSearchParams(window.location.search);
@@ -265,12 +265,12 @@
 
     async function iniciarMidia() {
       try {
-        adicionarLog("Solicitando câmera e microfone...");
+        adicionarLog("Solicitando câmera...");
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         localVideo.srcObject = localStream;
-        adicionarLog("✅ Câmera e microfone ativados");
+        adicionarLog("✅ Câmera OK");
       } catch (erro) {
-        adicionarLog("❌ Erro ao acessar mídia: " + erro.message);
+        adicionarLog("❌ Erro câmera: " + erro.message);
       }
     }
 
@@ -284,14 +284,10 @@
       document.getElementById('linkCompartilhar').style.display = "block";
 
       adicionarLog(`✅ Sala criada: ${codigoSala}`);
-      statusTexto.innerText = "Sala criada - aguardando parceiro";
+      statusTexto.innerText = "Sala criada - conectando...";
       statusTexto.className = "status conectando";
 
-      iniciarMidia().then(() => {
-        iniciarCanalTempoReal();
-      }).catch(() => {
-        iniciarCanalTempoReal(); // continua mesmo se a câmera falhar
-      });
+      iniciarMidia().then(() => iniciarCanalTempoReal()).catch(() => iniciarCanalTempoReal());
     }
 
     function entrarSala() {
@@ -300,45 +296,30 @@
 
       souCriador = false;
       adicionarLog(`Entrando na sala: ${codigoSala}`);
-      
-      iniciarMidia().then(() => {
-        iniciarCanalTempoReal();
-      }).catch(() => {
-        iniciarCanalTempoReal();
-      });
+      iniciarMidia().then(() => iniciarCanalTempoReal()).catch(() => iniciarCanalTempoReal());
     }
-
-    // ... (o resto do código permanece igual à versão anterior que enviei)
 
     function iniciarCanalTempoReal() {
       if (!codigoSala) return;
-      
-      statusTexto.innerText = "🔄 Conectando...";
-      statusTexto.className = "status conectando";
 
-      adicionarLog(`Entrando na sala: ${codigoSala}`);
-
-      canalTempoReal = supabase.channel(`sala:${codigoSala}`)
+      canalTempoReal = supabaseClient.channel(`sala:${codigoSala}`)
         .on('broadcast', { event: 'dados' }, async (payload) => {
           const dados = payload.payload;
-          adicionarLog(`📩 Recebido: ${dados.tipo || 'ICE Candidate'}`);
+          adicionarLog(`📩 Recebido: ${dados.tipo || 'candidate'}`);
 
           if (!conexaoP2P) criarConexaoP2P();
 
           try {
             if (dados.tipo === 'pronto' && souCriador) {
-              setTimeout(criarConvite, 800);
-            }
-            else if (dados.tipo === 'oferta') {
+              setTimeout(criarConvite, 600);
+            } else if (dados.tipo === 'oferta') {
               await conexaoP2P.setRemoteDescription(new RTCSessionDescription(dados));
               const resposta = await conexaoP2P.createAnswer();
               await conexaoP2P.setLocalDescription(resposta);
               enviarDados({ ...resposta, tipo: 'resposta' });
-            } 
-            else if (dados.tipo === 'resposta') {
+            } else if (dados.tipo === 'resposta') {
               await conexaoP2P.setRemoteDescription(new RTCSessionDescription(dados));
-            } 
-            else if (dados.candidate) {
+            } else if (dados.candidate) {
               await conexaoP2P.addIceCandidate(new RTCIceCandidate(dados));
             }
           } catch (e) {
@@ -347,15 +328,15 @@
         })
         .subscribe((status) => {
           if (status === 'SUBSCRIBED') {
-            adicionarLog("✅ Conectado ao canal da sala");
+            adicionarLog("✅ Sala conectada");
             enviarDados({ tipo: 'pronto' });
           }
         });
     }
 
     function enviarDados(dados) {
-      if (supabase && canalTempoReal) {
-        supabase.channel(`sala:${codigoSala}`).send({
+      if (supabaseClient && canalTempoReal) {
+        supabaseClient.channel(`sala:${codigoSala}`).send({
           type: 'broadcast',
           event: 'dados',
           payload: dados
@@ -374,7 +355,6 @@
         remoteVideo.srcObject = e.streams[0];
         statusTexto.innerText = "✅ CONECTADO!";
         statusTexto.className = "status conectado";
-        adicionarLog("✅ Vídeo recebido do parceiro");
       };
 
       conexaoP2P.onicecandidate = (e) => {
@@ -393,33 +373,34 @@
     }
 
     async function criarConvite() {
-      adicionarLog("📤 Enviando convite...");
+      adicionarLog("📤 Enviando oferta...");
       const offer = await conexaoP2P.createOffer();
       await conexaoP2P.setLocalDescription(offer);
       enviarDados({ ...offer, tipo: 'oferta' });
     }
 
     function configurarCanalTexto() {
-      canalDados.onopen = () => adicionarLog("📨 Chat aberto");
+      canalDados.onopen = () => adicionarLog("📨 Chat aberto!");
       canalDados.onmessage = (e) => adicionarMensagemTela('them', e.data);
     }
 
     function enviarMensagem() {
-      if (!canalDados || canalDados.readyState !== "open") return alert("Chat não conectado ainda");
+      if (!canalDados || canalDados.readyState !== "open") return alert("Chat não conectado");
       const input = document.getElementById('textoMensagem');
-      if (input.value.trim()) {
-        canalDados.send(input.value);
-        adicionarMensagemTela('me', input.value);
-        input.value = '';
+      const texto = input.value.trim();
+      if (texto) {
+        canalDados.send(texto);
+        adicionarMensagemTela('me', texto);
+        input.value = "";
       }
     }
 
     function adicionarMensagemTela(tipo, texto) {
       const chat = document.getElementById('mensagensChat');
-      const msg = document.createElement('div');
-      msg.className = `message ${tipo}`;
-      msg.innerHTML = `<strong>${tipo === 'me' ? 'Você' : 'Parceiro'}:</strong> ${texto}`;
-      chat.appendChild(msg);
+      const div = document.createElement('div');
+      div.className = `message ${tipo}`;
+      div.innerHTML = `<strong>${tipo === 'me' ? 'Você' : 'Parceiro'}:</strong> ${texto}`;
+      chat.appendChild(div);
       chat.scrollTop = chat.scrollHeight;
     }
 
@@ -438,9 +419,6 @@
     }
 
     function desligarChamada() {
-      if (conexaoP2P) conexaoP2P.close();
-      if (localStream) localStream.getTracks().forEach(t => t.stop());
-      if (canalTempoReal) supabase.removeChannel(canalTempoReal);
       location.reload();
     }
   </script>
