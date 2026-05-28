@@ -168,7 +168,6 @@
     }
   </style>
 
-  <!-- 📡 BIBLIOTECA DO SUPABASE -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -216,12 +215,8 @@
   </div>
 
   <script>
-    // ==============================================
-    // ✅ SEUS DADOS CERTOS AQUI
-    // ==============================================
     const SUPABASE_URL = "https://xxmsrrekhtuvtpulkfwu.supabase.co";
     const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh4bXNycmVraHR1dnRwdWxrZnd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5MTc2NTQsImV4cCI6MjA5NTQ5MzY1NH0.H7-Kn0FZ_W2gOrqsuClXV1-BkQywj8rXBavSg9I7R4Q";
-    // ==============================================
 
     let localStream;
     let conexaoP2P;
@@ -252,105 +247,111 @@
     window.onload = () => {
       adicionarLog("Sistema iniciado");
       
-      // ✅ CORREÇÃO AQUI: nome da biblioteca correto
-      if (typeof supabaseJs !== 'undefined') {
-        supabase = supabaseJs.createClient(SUPABASE_URL, SUPABASE_KEY);
-        adicionarLog("✅ Conectado ao Supabase");
-      } else {
-        adicionarLog("❌ Biblioteca não carregou, recarregue a página");
-      }
+      supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+      adicionarLog("✅ Conectado ao Supabase");
 
       const parametroUrl = new URLSearchParams(window.location.search);
-      if(parametroUrl.get('sala')) {
+      if (parametroUrl.get('sala')) {
         codigoSala = parametroUrl.get('sala');
         document.getElementById('roomCode').value = codigoSala;
         adicionarLog("Entrando automaticamente: " + codigoSala);
-        entrarSala(); 
+        entrarSala();
       }
 
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('service-worker.js');
       }
-      carregarHistoricoLocal();
     };
 
     async function iniciarMidia() {
       try {
-        adicionarLog("Ligando câmera...");
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        adicionarLog("Ligando câmera e microfone...");
+        localStream = await navigator.mediaDevices.getUserMedia({ 
+          video: true, 
+          audio: true 
+        });
         localVideo.srcObject = localStream;
-        adicionarLog("✅ Câmera OK");
+        adicionarLog("✅ Câmera e microfone OK");
       } catch (erro) {
-        adicionarLog("❌ Erro câmera: " + erro.message);
+        adicionarLog("❌ Erro ao acessar mídia: " + erro.message);
+        alert("Não foi possível acessar câmera/microfone. Verifique as permissões.");
       }
     }
 
-    // ✅ FUNÇÃO DE CRIAR SALA GARANTIDA
     function criarSala() {
-      try {
-        codigoSala = "sala-" + Math.random().toString(36).substr(2, 10);
-        document.getElementById('roomCode').value = codigoSala;
-        souCriador = true;
-        const linkCompleto = `${window.location.origin}${window.location.pathname}?sala=${codigoSala}`;
-        document.getElementById('linkTexto').innerText = linkCompleto;
-        document.getElementById('linkCompartilhar').style.display = "block";
-        iniciarMidia();
+      codigoSala = "sala-" + Math.random().toString(36).substr(2, 9);
+      document.getElementById('roomCode').value = codigoSala;
+      souCriador = true;
+      const linkCompleto = `${window.location.origin}${window.location.pathname}?sala=${codigoSala}`;
+      document.getElementById('linkTexto').innerText = linkCompleto;
+      document.getElementById('linkCompartilhar').style.display = "block";
+      
+      iniciarMidia().then(() => {
         iniciarCanalTempoReal();
-        adicionarLog("✅ Sala criada: " + codigoSala);
-        alert(`✅ Sala criada! Código: ${codigoSala}`);
-      } catch (erro) {
-        adicionarLog("❌ Erro ao criar sala: " + erro.message);
-      }
+      });
     }
 
     function entrarSala() {
       codigoSala = document.getElementById('roomCode').value.trim();
-      if(!codigoSala) return alert("Código inválido!");
+      if (!codigoSala) return alert("Digite um código de sala válido!");
+      
       souCriador = false;
-      iniciarMidia();
-      iniciarCanalTempoReal();
+      iniciarMidia().then(() => {
+        iniciarCanalTempoReal();
+      });
     }
 
-    // 🔴 CANAL DE TEMPO REAL
     function iniciarCanalTempoReal() {
+      if (!codigoSala) return;
+      
       statusTexto.innerText = "🔄 Conectando...";
       statusTexto.className = "status conectando";
+
+      adicionarLog(`Entrando na sala: ${codigoSala} | Sou criador: ${souCriador}`);
 
       canalTempoReal = supabase.channel(`sala:${codigoSala}`)
         .on('broadcast', { event: 'dados' }, async (payload) => {
           const dados = payload.payload;
-          adicionarLog("📩 Recebido: " + (dados.tipo || 'candidato'));
+          adicionarLog(`📩 Recebido: ${dados.tipo || 'candidato'}`);
 
-          if(!conexaoP2P) criarConexaoP2P();
-
-          if(dados.tipo === 'pronto') {
-            if (souCriador) criarConvite();
+          if (!conexaoP2P) {
+            criarConexaoP2P();
           }
-          else if(dados.tipo === 'oferta') {
-            await conexaoP2P.setRemoteDescription(new RTCSessionDescription(dados));
-            const resposta = await conexaoP2P.createAnswer();
-            await conexaoP2P.setLocalDescription(resposta);
-            enviarDados({ ...resposta, tipo: 'resposta' });
-          } 
-          else if(dados.tipo === 'resposta') {
-            await conexaoP2P.setRemoteDescription(new RTCSessionDescription(dados));
-          } 
-          else if(dados.candidate) {
-            try { await conexaoP2P.addIceCandidate(new RTCIceCandidate(dados)); } catch(e) { adicionarLog("⚠️ Erro candidato: " + e); }
+
+          try {
+            if (dados.tipo === 'pronto') {
+              if (souCriador && conexaoP2P.connectionState === 'new') {
+                setTimeout(criarConvite, 500); // delay para estabilizar
+              }
+            }
+            else if (dados.tipo === 'oferta') {
+              await conexaoP2P.setRemoteDescription(new RTCSessionDescription(dados));
+              const resposta = await conexaoP2P.createAnswer();
+              await conexaoP2P.setLocalDescription(resposta);
+              enviarDados({ ...resposta, tipo: 'resposta' });
+            } 
+            else if (dados.tipo === 'resposta') {
+              await conexaoP2P.setRemoteDescription(new RTCSessionDescription(dados));
+            } 
+            else if (dados.candidate) {
+              await conexaoP2P.addIceCandidate(new RTCIceCandidate(dados));
+            }
+          } catch (e) {
+            adicionarLog("⚠️ Erro no processamento: " + e.message);
           }
         })
         .subscribe((status) => {
           if (status === 'SUBSCRIBED') {
-            adicionarLog("✅ Escutando a sala");
+            adicionarLog("✅ Inscrito na sala com sucesso");
             enviarDados({ tipo: 'pronto' });
           } else {
-            adicionarLog("❌ Erro ao se inscrever: " + status);
+            adicionarLog("❌ Erro na inscrição: " + status);
           }
         });
     }
 
     function enviarDados(dados) {
-      if(supabase && canalTempoReal) {
+      if (supabase && canalTempoReal) {
         supabase.channel(`sala:${codigoSala}`).send({
           type: 'broadcast',
           event: 'dados',
@@ -359,17 +360,20 @@
       }
     }
 
-    // 🔗 CONEXÃO P2P
     function criarConexaoP2P() {
-      adicionarLog("🔗 Criando conexão...");
+      if (conexaoP2P) return;
+      
+      adicionarLog("🔗 Criando conexão WebRTC...");
       conexaoP2P = new RTCPeerConnection(configuracao);
 
-      localStream.getTracks().forEach(faixa => conexaoP2P.addTrack(faixa, localStream));
+      localStream.getTracks().forEach(track => {
+        conexaoP2P.addTrack(track, localStream);
+      });
 
       conexaoP2P.ontrack = (evento) => {
-        adicionarLog("✅ VÍDEO RECEBIDO! CONECTADO!");
+        adicionarLog("✅ Vídeo do parceiro recebido!");
         remoteVideo.srcObject = evento.streams[0];
-        statusTexto.innerText = "✅ CONECTADO! - 100% DIRETO";
+        statusTexto.innerText = "✅ CONECTADO DIRETO (P2P)";
         statusTexto.className = "status conectado";
       };
 
@@ -381,6 +385,7 @@
         adicionarLog("Estado da conexão: " + conexaoP2P.connectionState);
       };
 
+      // Canal de dados (chat)
       if (souCriador) {
         canalDados = conexaoP2P.createDataChannel("chat");
         configurarCanalTexto();
@@ -393,28 +398,32 @@
     }
 
     async function criarConvite() {
-      adicionarLog("📤 Enviando convite...");
-      const oferta = await conexaoP2P.createOffer();
-      await conexaoP2P.setLocalDescription(oferta);
-      enviarDados({ ...oferta, tipo: 'oferta' });
+      if (!conexaoP2P) return;
+      try {
+        adicionarLog("📤 Enviando oferta SDP...");
+        const oferta = await conexaoP2P.createOffer();
+        await conexaoP2P.setLocalDescription(oferta);
+        enviarDados({ ...oferta, tipo: 'oferta' });
+      } catch (e) {
+        adicionarLog("❌ Erro ao criar oferta: " + e.message);
+      }
     }
 
-    // 💬 CHAT
     function configurarCanalTexto() {
-      canalDados.onopen = () => adicionarLog("📨 Canal de mensagens ABERTO!");
+      canalDados.onopen = () => adicionarLog("📨 Canal de chat aberto!");
       canalDados.onmessage = (evento) => {
-        let historico = JSON.parse(localStorage.getItem(`chat_${codigoSala}`) || '[]');
-        historico.push({ tipo: 'recebido', texto: evento.data });
-        localStorage.setItem(`chat_${codigoSala}`, JSON.stringify(historico));
         adicionarMensagemTela('them', evento.data);
       };
     }
 
     function enviarMensagem() {
-      if(!canalDados || canalDados.readyState !== "open") return alert("Ainda não conectado!");
+      if (!canalDados || canalDados.readyState !== "open") {
+        return alert("Chat ainda não está conectado!");
+      }
       const input = document.getElementById('textoMensagem');
       const texto = input.value.trim();
-      if(!texto) return;
+      if (!texto) return;
+      
       canalDados.send(texto);
       adicionarMensagemTela('me', texto);
       input.value = "";
@@ -429,40 +438,40 @@
       caixa.scrollTop = caixa.scrollHeight;
     }
 
-    function carregarHistoricoLocal() {
-      const dados = JSON.parse(localStorage.getItem(`chat_${codigoSala}`) || '[]');
-      dados.forEach(item => adicionarMensagemTela(item.tipo, item.texto));
-    }
-
-    // 🎛️ CONTROLES
+    // Controles
     function alternarAudio() {
-      if(!localStream) return;
-      const faixaAudio = localStream.getAudioTracks()[0];
-      faixaAudio.enabled = !faixaAudio.enabled;
-      const btn = document.getElementById('btnAudio');
-      btn.innerText = faixaAudio.enabled ? "🎤 Áudio: ON" : "🎤 Áudio: OFF";
-      btn.style.background = faixaAudio.enabled ? "#00bfff" : "#ff8800";
+      if (!localStream) return;
+      const track = localStream.getAudioTracks()[0];
+      if (track) {
+        track.enabled = !track.enabled;
+        const btn = document.getElementById('btnAudio');
+        btn.innerText = track.enabled ? "🎤 Áudio: ON" : "🎤 Áudio: OFF";
+        btn.style.background = track.enabled ? "#00bfff" : "#ff8800";
+      }
     }
 
     function alternarVideo() {
-      if(!localStream) return;
-      const faixaVideo = localStream.getVideoTracks()[0];
-      faixaVideo.enabled = !faixaVideo.enabled;
-      const btn = document.getElementById('btnVideo');
-      btn.innerText = faixaVideo.enabled ? "📹 Vídeo: ON" : "📹 Vídeo: OFF";
-      btn.style.background = faixaVideo.enabled ? "#00bfff" : "#ff8800";
+      if (!localStream) return;
+      const track = localStream.getVideoTracks()[0];
+      if (track) {
+        track.enabled = !track.enabled;
+        const btn = document.getElementById('btnVideo');
+        btn.innerText = track.enabled ? "📹 Vídeo: ON" : "📹 Vídeo: OFF";
+        btn.style.background = track.enabled ? "#00bfff" : "#ff8800";
+      }
     }
 
     function desligarChamada() {
-      if(conexaoP2P) conexaoP2P.close();
-      if(localStream) localStream.getTracks().forEach(faixa => faixa.stop());
-      if(canalTempoReal) supabase.removeChannel(canalTempoReal);
+      if (conexaoP2P) conexaoP2P.close();
+      if (localStream) localStream.getTracks().forEach(t => t.stop());
+      if (canalTempoReal) supabase.removeChannel(canalTempoReal);
       
       conexaoP2P = null;
       canalDados = null;
       remoteVideo.srcObject = null;
       statusTexto.innerText = "📴 Chamada encerrada";
       statusTexto.className = "status desconectado";
+      adicionarLog("Chamada finalizada");
     }
   </script>
 </body>
