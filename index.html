@@ -75,7 +75,7 @@
     <div class="log-area" id="logTela">LOG DE SISTEMA:<br></div>
 
     <div class="video-grid">
-      <div class="video-container">
+      <div class="video-container local-preview">
         <p>Você</p>
         <video id="localVideo" autoplay playsinline muted></video>
       </div>
@@ -88,6 +88,8 @@
     <div class="controls">
       <button id="btnAudio" onclick="alternarAudio()" class="btn-primary"> Áudio: ON</button>
       <button id="btnVideo" onclick="alternarVideo()" class="btn-primary"> Vídeo: ON</button>
+      <input type="checkbox" id="ocultarMinhaTela" class="local-preview-toggle">
+      <label for="ocultarMinhaTela" class="local-preview-btn"></label>
       <button onclick="desligarChamada()" class="btn-danger"> Desligar</button>
     </div>
 
